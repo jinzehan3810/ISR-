@@ -2,8 +2,8 @@ env_path: "./environments/Curriculum/envs/AntMaze_UMaze_source.py"
 CurriculumCfg:
   env_id: "Curriculum/AntMaze_UMaze"
   num_envs: 64
-  num_samples: 3
-  training_alg: "SAC"
+  num_samples: 1 # 3
+  training_alg: "MonitoredSAC" # "SAC"
   policy_network: "MultiInputPolicy"
   eval_freq: 1_000
   short_training_timesteps: 500_000

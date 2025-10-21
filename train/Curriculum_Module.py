@@ -12,6 +12,9 @@ from gpt.curriculum_api_chain_ant import CurriculumAPI_Ant
 from gpt.curriculum_api_chain_fetch import CurriculumAPI_Fetch
 from traj_feedback import analyze_trajectory_ant, analyze_trajectory_fetch
 
+from train.Monitored_SAC import MonitoredSAC
+from utils.td_error_tracker import TDErrorTracker
+
 traj_analysis_function_map = {
     "AntMaze_UMaze": analyze_trajectory_ant,
     "FetchSlide": analyze_trajectory_fetch,
@@ -21,6 +24,7 @@ traj_analysis_function_map = {
 training_algorithm_map = {
     "PPO": PPO,
     "SAC": SAC,
+    "MonitoredSAC": MonitoredSAC,
 }
 
 api_map = {
@@ -44,6 +48,11 @@ class Curriculum_Module:
         self.stats_summary = []
         self.training_algorithm = training_algorithm_map[self.cfg["training_alg"]]
         self.traj_analysis_function = traj_analysis_function_map[self.env_name]
+        self.tracker = TDErrorTracker(
+            save_dir=self.logger_path + "td_errors",
+            experiment_name=self.env_name + "_curriculum"
+        )
+        
         
     def generate_curriculum(self):
         # Generate curriculum and return list of dictionaries with task details
@@ -110,12 +119,14 @@ class Curriculum_Module:
                                             best_model_save_path=self.logger_path + f"{task['Name']}/sample_{sample_num}", 
                                             eval_freq=self.cfg["eval_freq"], 
                                             deterministic=True, render=False, warn=False)
-        
+        if sample_num == 0:
+            self.tracker.set_stage(task['Name'])
         if curriculum_idx == 0:
             model = self.training_algorithm(self.cfg["policy_network"],
                                             training_env,
                                             verbose=1,
-                                            tensorboard_log=self.logger_path)
+                                            tensorboard_log=self.logger_path,
+                                            td_tracker=self.tracker)
         else:
             previous_task = self.curriculum_info[curriculum_idx - 1]['Name']
             pre_tuned_model_path = self.logger_path + previous_task + f"/sample_{self.best_model_idx_list[-1]}/final_model"
@@ -123,6 +134,7 @@ class Curriculum_Module:
             print("Loading model from " + pre_tuned_model_path)
             model = self.training_algorithm.load(pre_tuned_model_path)
             model.set_env(training_env)
+            model.set_td_tracker(self.tracker)
 
         if curriculum_idx == self.curriculum_length - 1 or curriculum_idx == self.curriculum_length - 2:
             model.learn(total_timesteps=self.cfg['long_training_timesteps'], callback=eval_callback, tb_log_name=f"{task['Name']}_sample_{sample_num}")
@@ -178,12 +190,14 @@ class Curriculum_Module:
                                             best_model_save_path=self.logger_path + f"{task['Name']}/sample_{sample_num}", 
                                             eval_freq=self.cfg["eval_freq"], 
                                             deterministic=True, render=False, warn=False)
-        
+        if sample_num == 0:
+            self.tracker.set_stage(task['Name'])
         if curriculum_idx == 0:
             model = self.training_algorithm(self.cfg["policy_network"],
                                             training_env,
                                             verbose=1,
-                                            tensorboard_log=self.logger_path)
+                                            tensorboard_log=self.logger_path,
+                                            td_tracker=self.tracker)
         else:
             previous_task = self.curriculum_info[curriculum_idx - 1]['Name']
             pre_tuned_model_path = self.logger_path + previous_task + f"/sample_{self.best_model_idx_list[-1]}/final_model"
@@ -191,6 +205,7 @@ class Curriculum_Module:
             print("Loading model from " + pre_tuned_model_path)
             model = self.training_algorithm.load(pre_tuned_model_path)
             model.set_env(training_env)
+            model.set_td_tracker(self.tracker)
 
         if curriculum_idx == self.curriculum_length - 1 or curriculum_idx == self.curriculum_length - 2:
             model.learn(total_timesteps=self.cfg['long_training_timesteps'], callback=eval_callback, tb_log_name=f"best_reward_{task['Name']}_sample_{sample_num}")
@@ -250,7 +265,8 @@ class Curriculum_Module:
                     continue
             
             # Use LLM to choose the best model (keeping this part as original)
-            best_sample_idx = self.gpt_api.feedback(self.env_name, task, curriculum_idx, self.stats_summary)
+            # best_sample_idx = self.gpt_api.feedback(self.env_name, task, curriculum_idx, self.stats_summary)
+            best_sample_idx = 0
             trial = 1
             while best_sample_idx is None:
                 print("Statistics Analysis error. Try again.")

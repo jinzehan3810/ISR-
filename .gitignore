@@ -4,3 +4,4 @@ logs/
 *.egg-info
 *.out
 */key.yaml
+tests/

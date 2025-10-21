@@ -48,6 +48,7 @@ class SAC_Module:
         model = SAC(self.cfg['policy_network'],
                     training_env,
                     verbose=1,
+                    tensorboard_log=self.logger_path + "sac/",
                     )
         
         model.learn(total_timesteps=self.cfg['training_timesteps'], callback=eval_callback)
