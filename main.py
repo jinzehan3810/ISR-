@@ -33,5 +33,10 @@ if __name__ == "__main__":
 
     env_path = cfg['env_path']
 
+    # module = module_map[exp](env_name, env_path, logger_path, cfg, seed)
+    # module.train()
+
+    # w/o llm curricullm
+    logger_path = f"{args.logdir}/qwen_{task}/{task}/{exp}_{seed}/" 
     module = module_map[exp](env_name, env_path, logger_path, cfg, seed)
-    module.train()
+    module.train_with_best_rewards()

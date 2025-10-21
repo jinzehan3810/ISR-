@@ -155,6 +155,123 @@ class Curriculum_Module:
         gc.collect()
         torch.cuda.empty_cache()  # Free up unused memory
 
+    def train_single_with_best_reward(self, curriculum_idx, task, sample_num):
+        """使用已有的最佳奖励代码进行训练，不调用LLM生成新代码"""
+        # Create the environment
+        env_id = self.cfg["env_id"]
+        eval_env_id = self.cfg["env_id"]
+
+        # Update env code using existing best reward code
+        reward_code = self.gpt_api.update_env_code(self.env_path, curriculum_idx,
+                                     previous_reward_code=self.best_reward_code_list, 
+                                     version_number=sample_num,
+                                     use_existing_best=True)
+        self.current_reward_code_list.append(reward_code)
+
+        # Create the vectorized environment
+        training_env = SubprocVecEnv([make_env(env_id, i, seed=self.seed) for i in range(self.cfg["num_envs"])])
+        eval_env = SubprocVecEnv([make_env(eval_env_id, i, seed=self.seed) for i in range(self.cfg["num_envs"])])
+
+        # Create the callback
+        eval_callback = CurriculumEvalCallback(eval_env, 
+                                            log_path=self.logger_path + f"{task['Name']}/sample_{sample_num}", 
+                                            best_model_save_path=self.logger_path + f"{task['Name']}/sample_{sample_num}", 
+                                            eval_freq=self.cfg["eval_freq"], 
+                                            deterministic=True, render=False, warn=False)
+        
+        if curriculum_idx == 0:
+            model = self.training_algorithm(self.cfg["policy_network"],
+                                            training_env,
+                                            verbose=1,
+                                            tensorboard_log=self.logger_path)
+        else:
+            previous_task = self.curriculum_info[curriculum_idx - 1]['Name']
+            pre_tuned_model_path = self.logger_path + previous_task + f"/sample_{self.best_model_idx_list[-1]}/final_model"
+
+            print("Loading model from " + pre_tuned_model_path)
+            model = self.training_algorithm.load(pre_tuned_model_path)
+            model.set_env(training_env)
+
+        if curriculum_idx == self.curriculum_length - 1 or curriculum_idx == self.curriculum_length - 2:
+            model.learn(total_timesteps=self.cfg['long_training_timesteps'], callback=eval_callback, tb_log_name=f"best_reward_{task['Name']}_sample_{sample_num}")
+        else:
+            model.learn(total_timesteps=self.cfg['short_training_timesteps'], callback=eval_callback, tb_log_name=f"best_reward_{task['Name']}_sample_{sample_num}")
+
+        model.save(self.logger_path + f"{task['Name']}/sample_{sample_num}/final_model.zip")
+
+        try:
+            # Get trajectory
+            obs = eval_env.reset()
+            obs_trajectory = [obs['observation'][0]]
+            goal_trajectory = [obs['desired_goal'][0]]
+            for _ in range(7000):
+                action, _ = model.predict(obs, deterministic=True)
+                obs, _, _, _ = eval_env.step(action)
+                obs_trajectory.append(obs['observation'][0])
+                goal_trajectory.append(obs['desired_goal'][0])
+
+            self.stats_summary.append(self.traj_analysis_function(obs_trajectory, goal_trajectory))
+        except Exception as e:
+            print(f"Error in evaluating task {task['Name']} sample {sample_num}")
+            print(e)
+            # Save error message in log path
+            with open(self.logger_path + f"{task['Name']}/sample_{sample_num}/evaluation_error.txt", "w") as file:
+                file.write(str(e))
+            self.stats_summary.append({"Error": "Error in evaluating task"})
+
+        del model, training_env, eval_env, eval_callback
+        gc.collect()
+        torch.cuda.empty_cache()  # Free up unused memory
+
+    def train_with_best_rewards(self, start_stage_idx=0):
+        """使用已有的最佳奖励代码进行多阶段训练"""
+        print(f"Starting training from stage {start_stage_idx} using existing best reward codes")
+        
+        # Load curriculum and previous best rewards
+        self.load_curriculum()
+        if start_stage_idx > 0:
+            self.load_rewards(start_stage_idx)
+
+        for curriculum_idx in range(start_stage_idx, self.curriculum_length):
+            task = self.curriculum_info[curriculum_idx]
+            print(f"Training stage {curriculum_idx}: {task['Name']} using best reward code")
+            
+            for sample_num in range(self.cfg["num_samples"]):
+                try:
+                    self.train_single_with_best_reward(curriculum_idx, task, sample_num)
+                except Exception as e:
+                    print(f"Error in training task {task['Name']} sample {sample_num}")
+                    print(e)
+                    # Save error message in log path
+                    os.makedirs(self.logger_path + f"{task['Name']}/sample_{sample_num}/", exist_ok=True)
+                    with open(self.logger_path + f"{task['Name']}/sample_{sample_num}/training_error.txt", "w") as file:
+                        file.write(str(e))
+                    self.stats_summary.append({"Error": "Error in evaluating task"})
+                    continue
+            
+            # Use LLM to choose the best model (keeping this part as original)
+            best_sample_idx = self.gpt_api.feedback(self.env_name, task, curriculum_idx, self.stats_summary)
+            trial = 1
+            while best_sample_idx is None:
+                print("Statistics Analysis error. Try again.")
+                best_sample_idx = self.gpt_api.feedback(self.env_name, task, curriculum_idx, self.stats_summary)
+                trial += 1
+                if trial == 5:
+                    best_sample_idx = 0
+
+            self.best_model_idx_list.append(best_sample_idx)
+            # Update best reward code list
+            self.best_reward_code_list.append(self.current_reward_code_list[best_sample_idx])
+
+            # Save the best reward code list
+            with open(self.logger_path + f"{task['Name']}/best_reward_code.txt", "w") as file:
+                file.write(self.current_reward_code_list[best_sample_idx])
+                
+            self.current_reward_code_list = []
+            self.stats_summary = []
+
+        print("Training with best reward codes completed!")
+
     def load_curriculum(self):
         # Load curriculum
         with open(self.logger_path + "curriculum.md", "r") as file:
@@ -227,7 +344,7 @@ class Curriculum_Module:
         for idx, task in enumerate(self.curriculum_info[resume_idx:], start=resume_idx):
             if resume_from_training:
                 print(f"Training task {task['Name']}")
-                start_idx = resume_sample_idx
+                start_idx = resume_sample_idx if idx == resume_idx else 0
                 for sample_num in range(start_idx, self.num_samples):
                     try:
                         self.train_single(idx, task, sample_num)
@@ -239,7 +356,6 @@ class Curriculum_Module:
                             file.write(str(e))
                         self.stats_summary.append({"Error": "Error in evaluating task"})
                         continue
-                start_idx = 0
             else:
                 self.load_current_rewards(resume_idx)
                 print(f"Loaded current rewards for task {task['Name']}")

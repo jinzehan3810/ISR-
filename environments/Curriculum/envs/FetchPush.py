@@ -311,23 +311,39 @@ class MujocoFetchPushEnv(MujocoFetchEnv, EzPickle):
         end_effector_position, block_position, block_linear_velocity, \
         end_effector_linear_velocity, goal_position = self.obs()
     
-        # Parameters for reward calculation
-        end_effector_goal_distance_weights = 1.0
-        
-        # Reward components
-        end_effector_goal_distance = np.linalg.norm(end_effector_position - goal_position)
-        
-        # Inverse distance reward: Encourage the end effector to be close to the goal
-        # The closer the end effector is to the goal, the higher the reward
-        end_effector_goal_distance_reward = -end_effector_goal_distance_weights * end_effector_goal_distance
+        # Compute xy-distance between end effector and block (from Approach Block task)
+        ee_to_block_xy_dist = np.linalg.norm(end_effector_position[:2] - block_position[:2])
+        approach_block_reward = -ee_to_block_xy_dist
     
-        # Total reward is the sum of individual components.
-        # In this basic task, only focusing on end effector movement towards the goal
-        reward = end_effector_goal_distance_reward
-        
-        # Dictionary for individual reward components
+        # Compute block speed (from Contact and Push Block task)
+        block_speed_reward = np.linalg.norm(block_linear_velocity)
+    
+        # Compute xy-distance between block and goal (from Steer Block Toward Goal task)
+        block_to_goal_xy_dist = np.linalg.norm(block_position[:2] - goal_position[:2])
+        steer_toward_goal_reward = -block_to_goal_xy_dist
+    
+        # Sparse success reward for original task: 1 if block is within 0.05m of goal in xy-plane, else 0
+        success_threshold = 0.05
+        success_reward = 1.0 if block_to_goal_xy_dist < success_threshold else 0.0
+    
+        # Weights for curriculum learning
+        w_approach = 0.1   # weight for Approach Block (earliest task)
+        w_push = 0.2       # weight for Contact and Push Block
+        w_steer = 0.3      # weight for Steer Block Toward Goal
+        w_success = 1.0    # weight for current task: Original task (sparse success)
+    
+        # Total reward
+        reward = (w_approach * approach_block_reward +
+                  w_push * block_speed_reward +
+                  w_steer * steer_toward_goal_reward +
+                  w_success * success_reward)
+    
+        # Return total reward and breakdown
         reward_dict = {
-            'end_effector_goal_distance_reward': end_effector_goal_distance_reward,
+            "approach_block_reward": approach_block_reward,
+            "block_speed_reward": block_speed_reward,
+            "steer_toward_goal_reward": steer_toward_goal_reward,
+            "success_reward": success_reward
         }
     
         return reward, reward_dict

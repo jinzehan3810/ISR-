@@ -309,44 +309,61 @@ class MujocoFetchSlideEnv(MujocoFetchEnv, EzPickle):
         end_effector_position, block_position, block_linear_velocity, \
         end_effector_linear_velocity, goal_position = self.obs()
     
-        # Previous tasks rewards components
-        # Reach Task Weight
-        reach_weight = 0.05  # Slightly lower weight to focus on the original task
-        reach_distance = np.linalg.norm(end_effector_position - block_position)
-        reach_reward = -reach_distance * reach_weight
+        # --- Previous task 1: Approach the block (xy-plane proximity) ---
+        ee_to_block_xy_dist = np.linalg.norm(end_effector_position[:2] - block_position[:2])
+        approach_weight = 0.1
+        reward_approach = -ee_to_block_xy_dist
+        weighted_approach_reward = approach_weight * reward_approach
     
-        # Alignment Task Weight
-        align_weight = 0.05
-        align_difference = np.linalg.norm(end_effector_position[:2] - block_position[:2])
-        align_reward = -align_difference * align_weight
+        # --- Previous task 2: Push block with controlled velocity ---
+        block_to_goal_xy = goal_position[:2] - block_position[:2]
+        block_to_goal_xy_norm = np.linalg.norm(block_to_goal_xy)
+        
+        if block_to_goal_xy_norm > 1e-6:
+            block_to_goal_dir = block_to_goal_xy / block_to_goal_xy_norm
+        else:
+            block_to_goal_dir = np.array([0.0, 0.0])
     
-        # Initial Push Task Weight
-        velocity_weight = 0.05
-        velocity_reward = np.linalg.norm(block_linear_velocity) * velocity_weight
+        block_vel_xy = block_linear_velocity[:2]
+        block_vel_along_goal = np.dot(block_vel_xy, block_to_goal_dir)
+        velocity_along_weight = 0.5
+        reward_velocity_along = np.clip(block_vel_along_goal, 0.0, None)
     
-        # Controlled Push Towards Goal Weight
-        push_weight = 0.05
-        goal_distance_previous = np.linalg.norm(block_position - goal_position)
-        push_reward = -goal_distance_previous * push_weight
+        ee_vel_xy = end_effector_linear_velocity[:2]
+        ee_vel_parallel = np.dot(ee_vel_xy, block_to_goal_dir) * block_to_goal_dir
+        ee_vel_perp = ee_vel_xy - ee_vel_parallel
+        ee_vel_perp_norm = np.linalg.norm(ee_vel_perp)
+        perp_velocity_weight = -0.2
+        reward_velocity_perp = perp_velocity_weight * ee_vel_perp_norm
     
-        # Original Task: Give reward if distance between block position and goal position is less than 0.05, 0 otherwise.
-        # Setting a high weight to emphasize the success of the original task
-        original_task_weight = 1.0
-        goal_distance = np.linalg.norm(block_position - goal_position)
-        success_reward = 0.0
-        if goal_distance < 0.05:
-            success_reward = original_task_weight
+        # --- Previous task 3: Guide block toward goal with dense reward ---
+        block_to_goal_dist = np.linalg.norm(block_position[:2] - goal_position[:2])
+        distance_weight = -0.5
+        reward_distance = distance_weight * block_to_goal_dist
     
-        # Total reward combines all task rewards with respective weights
-        reward = reach_reward + align_reward + velocity_reward + push_reward + success_reward
+        # --- Current task: Original task (sparse success reward) ---
+        success_threshold = 0.05
+        block_goal_xy_dist = np.linalg.norm(block_position[:2] - goal_position[:2])
+        success_reward = 10.0 if block_goal_xy_dist < success_threshold else 0.0
+        success_weight = 1.0
+        weighted_success_reward = success_weight * success_reward
     
-        # Constructing a dictionary to break down the reward components for all tasks including the success reward for the original task
+        # Total reward
+        reward = (
+            weighted_approach_reward +
+            velocity_along_weight * reward_velocity_along +
+            reward_velocity_perp +
+            reward_distance +
+            weighted_success_reward
+        )
+    
+        # Reward dictionary
         reward_dict = {
-            "reach_reward": reach_reward,
-            "align_reward": align_reward,
-            "velocity_reward": velocity_reward,
-            "push_reward": push_reward,
-            "success_reward": success_reward,
+            "approach_block_xy": weighted_approach_reward,
+            "block_velocity_along_goal": velocity_along_weight * reward_velocity_along,
+            "end_effector_velocity_perp_penalty": reward_velocity_perp,
+            "block_to_goal_distance": reward_distance,
+            "success": weighted_success_reward
         }
     
         return reward, reward_dict

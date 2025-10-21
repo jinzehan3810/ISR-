@@ -268,6 +268,7 @@ class AntMazeEnv(MazeEnv, EzPickle):
             **kwargs,
         )
 
+        self.goal_dist_threshold = None
         # self.goal_dist_threshold = None
 
     def reset(self, *, seed: Optional[int] = None, **kwargs):
@@ -391,37 +392,39 @@ class AntMazeEnv(MazeEnv, EzPickle):
     
 
     def compute_reward_curriculum(self):
-        end_effector_position, block_position, block_linear_velocity, \
-        end_effector_linear_velocity, goal_position = self.obs()
+        torso_coordinate, torso_orientation, torso_velocity, \
+        torso_angular_velocity, goal_pos, goal_distance = self.obs()
     
-        # Parameters
-        desired_z_offset = 0.05  # Desired offset in z above the block (0.42 + offset)
-        position_tolerance = 0.02  # How close the end effector needs to be to the target position
+        # Target upright orientation (quaternion [1, 0, 0, 0])
+        target_orientation = np.array([1.0, 0.0, 0.0, 0.0])
+        
+        # Compute orientation error (using quaternion distance)
+        orientation_error = np.linalg.norm(torso_orientation - target_orientation)
+        
+        # Penalize deviation from upright posture
+        upright_reward = -orientation_error
+        
+        # Penalize excessive angular velocity to encourage stabilization
+        angular_velocity_penalty = -np.linalg.norm(torso_angular_velocity)
+        
+        # Small penalty for linear velocity to discourage drifting while stabilizing
+        velocity_penalty = -np.linalg.norm(torso_velocity)
+        
+        # Weighting parameters
+        w_upright = 2.0
+        w_angular_vel = 0.5
+        w_velocity = 0.1
     
-        # Calculate the desired position for the end effector above the block
-        desired_position_above_block = block_position + np.array([0.0, 0.0, desired_z_offset])
+        reward = (
+            w_upright * upright_reward +
+            w_angular_vel * angular_velocity_penalty +
+            w_velocity * velocity_penalty
+        )
     
-        # Calculate distance (error) between current end effector position and desired position
-        position_error = np.linalg.norm(end_effector_position - desired_position_above_block)
-    
-        # Transform position error into a negative reward (the closer to the desired position, the higher the reward)
-        position_control_reward_weight = 2.0  # Weighting of the position control reward component
-        position_control_reward = -position_control_reward_weight * position_error
-    
-        # Additional reward for being within a tolerance of the desired position
-        tolerance_reward = 0.0
-        if position_error < position_tolerance:
-            tolerance_reward_weight = 5.0  # Weighting of the tolerance reward component
-            tolerance_reward = tolerance_reward_weight
-    
-        # Total reward
-        reward = position_control_reward + tolerance_reward
-    
-        # Reward dictionary for easier debugging and interpretation
         reward_dict = {
-            "position_control_reward": position_control_reward,
-            "tolerance_reward": tolerance_reward,
-            "position_error": position_error
+            "upright_reward": upright_reward,
+            "angular_velocity_penalty": angular_velocity_penalty,
+            "velocity_penalty": velocity_penalty
         }
     
         return reward, reward_dict

@@ -1,8 +1,9 @@
 import re
 
 from gpt.utils import *
+import tempfile, os, shutil
 
-GPT_MODEL = "gpt-4-turbo-preview" # gpt-4-1106-preview, gpt-4-0613, gpt-4-32k, gpt-3.5-turbo-1106
+GPT_MODEL = "qwen3-max" # gpt-4-turbo-preview  deepseek-reasoner
 
 class CurriculumAPI_Fetch:
     def __init__(self, env_name, prompt_path, log_path):
@@ -85,21 +86,90 @@ class CurriculumAPI_Fetch:
         else:
             print("No code block found.")
         return None
+
+    def extract_best_agent_reward(self, curriculum_idx):
+        """从日志中提取指定阶段的最佳agent的reward_code"""
+        # 如果没有tasks_details，从日志文件中提取课程信息
+        if not hasattr(self, 'tasks_details') or not self.tasks_details:
+            curriculum_info = self._load_curriculum_from_log()
+            if not curriculum_info:
+                return None
+            self.tasks_details = curriculum_info
+            
+        if curriculum_idx >= len(self.tasks_details):
+            return None
+            
+        task = self.tasks_details[curriculum_idx]
+        task_name = task['Name']
+        
+        try:
+            # 读取决策文件获取最佳agent索引
+            decision_file = self.log_path + task_name + '.md'
+            if not os.path.exists(decision_file):
+                print(f"Decision file not found: {decision_file}")
+                return None
+                
+            with open(decision_file, 'r') as file:
+                decision = file.read().split('\n')[0]
+            
+            numbers = re.findall(r'\d+', decision)
+            if numbers:
+                best_agent_idx = int(numbers[0])
+            else:
+                print(f"No agent number found in decision for {task_name}")
+                return None
+            
+            # 读取对应sample的reward_code
+            reward_code_file = self.log_path + f"{task_name}/sample_{best_agent_idx}/reward_code.md"
+            
+            if not os.path.exists(reward_code_file):
+                print(f"Reward code file not found: {reward_code_file}")
+                return None
+                
+            with open(reward_code_file, 'r') as file:
+                reward_code = file.read()
+            
+            print(f"Successfully loaded reward code from {task_name}/sample_{best_agent_idx}")
+            return reward_code
+            
+        except Exception as e:
+            print(f"Error loading best agent reward for {task_name}: {e}")
+            return None
 	
-    def update_env_code(self, env_code_path, curriculum_idx, previous_reward_code=None, version_number=0):
+    def update_env_code(self, env_code_path, curriculum_idx, previous_reward_code=None, version_number=0, use_existing_best=False):
         # Created environment with task and save as version = env_version
-        # First, generate reward code from given task info
-        reward_code = None
-        max_attempt = 5
-        attempt = 0
-        while reward_code is None and attempt < max_attempt:
-            reward_code = self.generate_rewards(curriculum_idx, previous_reward_code)
-            attempt += 1
+        # 确保tasks_details可用
+        if not hasattr(self, 'tasks_details') or not self.tasks_details:
+            curriculum_info = self._load_curriculum_from_log()
+            if not curriculum_info:
+                raise ValueError("Cannot load curriculum information from log files")
+            self.tasks_details = curriculum_info
+            
+        task = self.tasks_details[curriculum_idx]
+        
+        if use_existing_best:
+            # 使用已有的最佳reward code
+            print(f"Using existing best reward code for {task['Name']}")
+            reward_code = self.extract_best_agent_reward(curriculum_idx)
+
+
             if reward_code is None:
-                print("Failed to generate reward code. Retrying...")
+                print(f"Failed to load existing best reward code, falling back to generation")
+                use_existing_best = False
+
+        
+        if not use_existing_best:
+            # 原有的生成逻辑
+            reward_code = None
+            max_attempt = 5
+            attempt = 0
+            while reward_code is None and attempt < max_attempt:
+                reward_code = self.generate_rewards(curriculum_idx, previous_reward_code)
+                attempt += 1
+                if reward_code is None:
+                    print("Failed to generate reward code. Retrying...")
 
         # Save the reward code
-        task = self.tasks_details[curriculum_idx]
         save_string_to_file(self.log_path + f"{task['Name']}/sample_{version_number}/" + "reward_code.md", reward_code)
 
         with open(env_code_path, 'r') as file:
@@ -165,3 +235,43 @@ class CurriculumAPI_Fetch:
         else:
             print("No number found in the decision.")
             return None
+
+    def _load_curriculum_from_log(self):
+        """从日志文件中加载课程信息，参考batch_plot.py中的extract_curriculum函数"""
+        try:
+            curriculum_file = self.log_path + "curriculum.md"
+            if not os.path.exists(curriculum_file):
+                print(f"Curriculum file not found: {curriculum_file}")
+                return None
+                
+            with open(curriculum_file, 'r') as file:
+                curriculum_txt = file.read()
+            
+            # Split the string into individual task sections
+            task_sections = re.split(r'\n\n(?=Task)', curriculum_txt)
+
+            # Function to extract details from each task section
+            def extract_task_details(task_section):
+                details = {}
+                lines = task_section.split('\n')
+                for line in lines:
+                    if line.startswith('Task'):
+                        details['Task'] = line.split(' ')[1]
+                    elif line.startswith('Name:'):
+                        details['Name'] = line.split(': ')[1]
+                    elif line.startswith('Description:'):
+                        details['Description'] = line.split(': ')[1]
+                    elif line.startswith('Reason:'):
+                        details['Reason'] = ': '.join(line.split(': ')[1:])
+                return details
+
+            # Extract details for all tasks
+            curriculum_info = [extract_task_details(section) for section in task_sections]
+            print(f"Successfully loaded {len(curriculum_info)} tasks from curriculum.md")
+            return curriculum_info
+            
+        except Exception as e:
+            print(f"Error loading curriculum from log: {e}")
+            return None
+
+

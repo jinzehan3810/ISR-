@@ -33,7 +33,7 @@ register(
 register(
      id="Curriculum/FetchPush",
      entry_point="Curriculum.envs.FetchPush:MujocoFetchPushEnv",
-     max_episode_steps=50,
+     max_episode_steps=500,
 )
 
 # register(
@@ -57,11 +57,11 @@ register(
 register(
      id="Curriculum/FetchPickAndPlace",
      entry_point="Curriculum.envs.FetchPickAndPlace:MujocoFetchPickAndPlaceEnv",
-     max_episode_steps=50,
+     max_episode_steps=500,
 )
 
 register(
      id="Curriculum/FetchSlide",
      entry_point="Curriculum.envs.FetchSlide:MujocoFetchSlideEnv",
-     max_episode_steps=50,
+     max_episode_steps=500,
 )

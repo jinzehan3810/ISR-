@@ -2,7 +2,7 @@ from openai import OpenAI
 import yaml
 import os
 
-GPT_KEY_PATH = './gpt/key.yaml'
+GPT_KEY_PATH = './gpt/qwen_key.yaml' # './gpt/gpt_key.yaml' './gpt/qwen_key.yaml'
 
 def file_to_string(filename):
     with open(filename, 'r') as file:
@@ -12,7 +12,7 @@ def get_client():
     with open(GPT_KEY_PATH, 'r') as stream:
         config = yaml.safe_load(stream)
 
-    client = OpenAI(api_key=config['OPENAI_API_KEY'])
+    client = OpenAI(api_key=config['OPENAI_API_KEY'], base_url=config['base_url'])
 
     return client
     
