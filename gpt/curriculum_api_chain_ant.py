@@ -7,7 +7,7 @@ import re
 
 from gpt.utils import *
 
-GPT_MODEL = "qwen3-max" # gpt-4-turbo-preview  deepseek-reasoner
+GPT_MODEL = "DeepSeek-V3.1-Terminus" # gpt-4-turbo-preview  deepseek-reasoner
 
 class CurriculumAPI_Ant:
     def __init__(self, env_name, prompt_path, log_path):
@@ -24,7 +24,7 @@ class CurriculumAPI_Ant:
 
         # Ensure the directory exists and write the curriculum to a file
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
-        with open(self.log_path + 'curriculum.md', 'w') as file:
+        with open(self.log_path + 'curriculum.md', 'w', encoding='utf-8') as file:
             file.write(tasks_string)
 
         # Split the string into individual task sections
@@ -39,7 +39,7 @@ class CurriculumAPI_Ant:
                 if line.startswith('Task'):
                     details['Task'] = line.split(' ')[1]
                 elif line.startswith('Name:'):
-                    details['Name'] = line.split(': ')[1]
+                    details['Name'] = line.split(': ')[1].replace('[', '').replace(']', '').strip()
                 elif line.startswith('Description:'):
                     details['Description'] = line.split(': ')[1]
                 elif line.startswith('Reason:'):
@@ -118,7 +118,7 @@ class CurriculumAPI_Ant:
                     if line.startswith('Task'):
                         details['Task'] = line.split(' ')[1]
                     elif line.startswith('Name:'):
-                        details['Name'] = line.split(': ')[1]
+                        details['Name'] = line.split(': ')[1].replace('[', '').replace(']', '').strip()
                     elif line.startswith('Description:'):
                         details['Description'] = line.split(': ')[1]
                     elif line.startswith('Reason:'):

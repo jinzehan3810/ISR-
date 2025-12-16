@@ -3,7 +3,7 @@ import re
 from gpt.utils import *
 import tempfile, os, shutil
 
-GPT_MODEL = "qwen3-max" # gpt-4-turbo-preview  deepseek-reasoner
+GPT_MODEL = "DeepSeek-V3.1-Terminus" # gpt-4-turbo-preview  deepseek-reasoner
 
 class CurriculumAPI_Fetch:
     def __init__(self, env_name, prompt_path, log_path):
@@ -35,7 +35,7 @@ class CurriculumAPI_Fetch:
                 if line.startswith('Task'):
                     details['Task'] = line.split(' ')[1]
                 elif line.startswith('Name:'):
-                    details['Name'] = line.split(': ')[1]
+                    details['Name'] = line.split(': ')[1].replace('[', '').replace(']', '').strip()
                 elif line.startswith('Description:'):
                     details['Description'] = line.split(': ')[1]
                 elif line.startswith('Reason:'):

@@ -1,0 +1,19 @@
+env_path: "./environments/Curriculum/envs/Humanoid_source.py"
+CurriculumCfg:
+  env_id: "Curriculum/HumanoidWalk-v0"
+  num_envs: 16
+  num_samples: 3
+  training_alg: "MonitoredSAC"
+  policy_network: "MlpPolicy"
+  eval_freq: 5000
+  short_training_timesteps: 1_000_000
+  long_training_timesteps: 5_000_000
+  evaluation_timesteps: 5000
+
+HerCfg:
+  env_id: "Humanoid-v4"
+  num_envs: 16
+  training_alg: "SAC"
+  policy_network: "MlpPolicy"
+  eval_freq: 5000
+  training_timesteps: 10_000_000

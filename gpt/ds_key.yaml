@@ -1,2 +1,2 @@
-OPENAI_API_KEY: "sk-7190dffc0e00439099039b6a9047f29d"
-base_url: "https://api.deepseek.com"
+OPENAI_API_KEY: ""
+base_url: "https://llmapi.paratera.com"

@@ -10,15 +10,17 @@ from evaluation.evalcallback_feedback import CurriculumEvalCallback
 from utils.train_utils import *
 from gpt.curriculum_api_chain_ant import CurriculumAPI_Ant
 from gpt.curriculum_api_chain_fetch import CurriculumAPI_Fetch
-from traj_feedback import analyze_trajectory_ant, analyze_trajectory_fetch
+from traj_feedback import analyze_trajectory_ant, analyze_trajectory_fetch, analyze_trajectory_humanoid
 
 from train.Monitored_SAC import MonitoredSAC
 from utils.td_error_tracker import TDErrorTracker
 
 traj_analysis_function_map = {
     "AntMaze_UMaze": analyze_trajectory_ant,
+    "AntMaze_Test": analyze_trajectory_ant,
     "FetchSlide": analyze_trajectory_fetch,
     "FetchPush": analyze_trajectory_fetch,
+    "HumanoidWalk": analyze_trajectory_humanoid,
 }
 
 training_algorithm_map = {
@@ -31,6 +33,7 @@ api_map = {
     "Curriculum/AntMaze_UMaze": CurriculumAPI_Ant,
     "Curriculum/FetchSlide": CurriculumAPI_Fetch,
     "Curriculum/FetchPush": CurriculumAPI_Fetch,
+    "Curriculum/HumanoidWalk-v0": CurriculumAPI_Ant, # Use Ant API class as base since it's generic enough
 }
 
 class Curriculum_Module:
@@ -38,7 +41,12 @@ class Curriculum_Module:
         self.env_name = env_name
         self.env_path = env_path
         self.prompt_path = "./gpt/prompt/"
-        self.gpt_api = api_map[cfg['CurriculumCfg']['env_id']](self.env_name, self.prompt_path, logger_path)
+        
+        # Use AntMaze_UMaze prompts for AntMaze_Test
+        prompt_env_name = "AntMaze_UMaze" if self.env_name == "AntMaze_Test" else self.env_name
+        self.prompt_env_name = prompt_env_name
+        
+        self.gpt_api = api_map[cfg['CurriculumCfg']['env_id']](prompt_env_name, self.prompt_path, logger_path)
         self.logger_path = logger_path
         self.best_reward_code_list = []
         self.best_model_idx_list = []
@@ -72,17 +80,17 @@ class Curriculum_Module:
                     print(e)
                     # Save error message in log path
                     os.makedirs(self.logger_path + f"{task['Name']}/sample_{sample_num}/", exist_ok=True)
-                    with open(self.logger_path + f"{task['Name']}/sample_{sample_num}/training_error.txt", "w") as file:
+                    with open(self.logger_path + f"{task['Name']}/sample_{sample_num}/training_error.txt", "w", encoding='utf-8') as file:
                         file.write(str(e))
                     self.stats_summary.append({"Error": "Error in evaluating task"})
                     continue
             
             # Asl LLM to choose the best model
-            best_sample_idx = self.gpt_api.feedback(self.env_name, task, curriculum_idx, self.stats_summary)
+            best_sample_idx = self.gpt_api.feedback(self.prompt_env_name, task, curriculum_idx, self.stats_summary)
             trial = 1
             while best_sample_idx is None:
                 print("Statistics Analysis error. Try again.")
-                best_sample_idx = self.gpt_api.feedback(self.env_name, task, curriculum_idx, self.stats_summary)
+                best_sample_idx = self.gpt_api.feedback(self.prompt_env_name, task, curriculum_idx, self.stats_summary)
                 trial += 1
                 if trial == 5:
                     best_sample_idx = 0
@@ -92,7 +100,7 @@ class Curriculum_Module:
             self.best_reward_code_list.append(self.current_reward_code_list[best_sample_idx])
 
             # Save the best reward code list
-            with open(self.logger_path + f"{task['Name']}/best_reward_code.txt", "w") as file:
+            with open(self.logger_path + f"{task['Name']}/best_reward_code.txt", "w", encoding='utf-8') as file:
                 file.write(self.current_reward_code_list[best_sample_idx])
                 
             self.current_reward_code_list = []
@@ -305,7 +313,7 @@ class Curriculum_Module:
                 if line.startswith("Task"):
                     details["Task"] = line.split(" ")[1]
                 elif line.startswith("Name:"):
-                    details["Name"] = line.split(": ")[1]
+                    details["Name"] = line.split(": ")[1].replace('[', '').replace(']', '').strip()
                 elif line.startswith("Description:"):
                     details["Description"] = line.split(": ")[1]
                 elif line.startswith("Reason:"):

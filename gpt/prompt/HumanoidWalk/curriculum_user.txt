@@ -1,0 +1,9 @@
+Please design a curriculum to teach a Humanoid robot to walk.
+Start with simple tasks (e.g., just standing up) and progress to walking forward.
+The final goal is to walk forward as fast as possible without falling.
+
+Available variables to control:
+- torso_z (height)
+- forward_vel (x velocity)
+- sideways_vel (y velocity)
+- joint_angles

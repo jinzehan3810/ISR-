@@ -1,0 +1,6 @@
+Task: <<Task_Name>>
+Description: <<Task_Description>>
+Reason: <<Task_Reason>>
+
+Please write the reward function code for this task.
+Remember to use `self.obs()` to get the state.

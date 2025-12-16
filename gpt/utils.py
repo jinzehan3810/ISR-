@@ -2,14 +2,14 @@ from openai import OpenAI
 import yaml
 import os
 
-GPT_KEY_PATH = './gpt/qwen_key.yaml' # './gpt/gpt_key.yaml' './gpt/qwen_key.yaml'
+GPT_KEY_PATH = './gpt/ds_key.yaml' # './gpt/gpt_key.yaml' './gpt/qwen_key.yaml'
 
 def file_to_string(filename):
-    with open(filename, 'r') as file:
+    with open(filename, 'r', encoding='utf-8') as file:
         return file.read()
     
 def get_client():
-    with open(GPT_KEY_PATH, 'r') as stream:
+    with open(GPT_KEY_PATH, 'r', encoding='utf-8') as stream:
         config = yaml.safe_load(stream)
 
     client = OpenAI(api_key=config['OPENAI_API_KEY'], base_url=config['base_url'])
@@ -36,5 +36,5 @@ def gpt_interaction(client, gpt_model, system_string, user_string):
 
 def save_string_to_file(save_path, string_file):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    with open(save_path, 'w') as file:
+    with open(save_path, 'w', encoding='utf-8') as file:
         file.write(string_file)

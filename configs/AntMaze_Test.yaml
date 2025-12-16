@@ -1,0 +1,19 @@
+env_path: "./environments/Curriculum/envs/AntMaze_UMaze_source.py"
+CurriculumCfg:
+  env_id: "Curriculum/AntMaze_UMaze"
+  num_envs: 1                # 减少环境数量，加快启动速度
+  num_samples: 1             # 每个任务只生成 1 个样本代码
+  training_alg: "MonitoredSAC"
+  policy_network: "MultiInputPolicy"
+  eval_freq: 100             # 频繁评估
+  short_training_timesteps: 200  # 极短的训练步数 (原为 500,000)
+  long_training_timesteps: 200   # 极短的训练步数 (原为 5,000,000)
+  evaluation_timesteps: 200      # 极短的评估步数
+
+HerCfg:
+  env_id: "AntMaze_UMaze-v4"
+  num_envs: 1
+  training_alg: "SAC"
+  policy_network: "MultiInputPolicy"
+  eval_freq: 100
+  training_timesteps: 1000

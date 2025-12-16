@@ -1,4 +1,5 @@
 import numpy as np
+from .humanoid_analysis import analyze_trajectory_humanoid
 
 def analyze_trajectory_ant(obs_trajectory, goal_trajectory):
     # obs_trajectory: list of observations

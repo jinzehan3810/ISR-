@@ -1,4 +1,6 @@
 logs/
+logs_test/
+logs_humanoid/
 **/__pycache__/
 *.pyc
 *.egg-info

@@ -36,6 +36,12 @@ register(
      max_episode_steps=500,
 )
 
+register(
+     id="Curriculum/HumanoidWalk-v0",
+     entry_point="Curriculum.envs.Humanoid_source:HumanoidCurriculumEnv",
+     max_episode_steps=1000,
+)
+
 # register(
 #      id="Curriculum/FetchPush-v0",
 #      entry_point="Curriculum.envs.FetchPush_v0:MujocoFetchPushEnv",

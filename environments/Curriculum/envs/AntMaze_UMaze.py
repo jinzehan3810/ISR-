@@ -268,7 +268,7 @@ class AntMazeEnv(MazeEnv, EzPickle):
             **kwargs,
         )
 
-        self.goal_dist_threshold = None
+        self.goal_dist_threshold = 6.0
         # self.goal_dist_threshold = None
 
     def reset(self, *, seed: Optional[int] = None, **kwargs):
@@ -395,36 +395,38 @@ class AntMazeEnv(MazeEnv, EzPickle):
         torso_coordinate, torso_orientation, torso_velocity, \
         torso_angular_velocity, goal_pos, goal_distance = self.obs()
     
-        # Target upright orientation (quaternion [1, 0, 0, 0])
-        target_orientation = np.array([1.0, 0.0, 0.0, 0.0])
-        
-        # Compute orientation error (using quaternion distance)
-        orientation_error = np.linalg.norm(torso_orientation - target_orientation)
-        
-        # Penalize deviation from upright posture
-        upright_reward = -orientation_error
-        
-        # Penalize excessive angular velocity to encourage stabilization
-        angular_velocity_penalty = -np.linalg.norm(torso_angular_velocity)
-        
-        # Small penalty for linear velocity to discourage drifting while stabilizing
-        velocity_penalty = -np.linalg.norm(torso_velocity)
-        
-        # Weighting parameters
-        w_upright = 2.0
-        w_angular_vel = 0.5
-        w_velocity = 0.1
+        # Main reward: progress towards goal (higher weight for current task)
+        goal_progress_weight = 2.0
+        goal_progress = -goal_distance[0]  # negative because we want to minimize distance
     
-        reward = (
-            w_upright * upright_reward +
-            w_angular_vel * angular_velocity_penalty +
-            w_velocity * velocity_penalty
-        )
+        # Reward for moving in the right direction (velocity towards goal)
+        goal_direction = goal_pos - torso_coordinate
+        goal_direction_norm = goal_direction / (np.linalg.norm(goal_direction) + 1e-8)
+        velocity_towards_goal = np.dot(torso_velocity, goal_direction_norm)
+        direction_reward_weight = 0.5
+        direction_reward = velocity_towards_goal
     
+        # Penalty for angular velocity to maintain stability (from previous task)
+        ang_vel_penalty_weight = 0.01
+        ang_vel_penalty = -np.linalg.norm(torso_angular_velocity)
+    
+        # Small penalty for excessive sideways movement (helps with maze navigation)
+        sideways_velocity = np.linalg.norm(torso_velocity - goal_direction_norm * velocity_towards_goal)
+        sideways_penalty_weight = 0.05
+        sideways_penalty = -sideways_velocity
+    
+        # Total reward
+        reward = (goal_progress_weight * goal_progress + 
+                  direction_reward_weight * direction_reward + 
+                  ang_vel_penalty_weight * ang_vel_penalty + 
+                  sideways_penalty_weight * sideways_penalty)
+    
+        # Individual reward components for logging
         reward_dict = {
-            "upright_reward": upright_reward,
-            "angular_velocity_penalty": angular_velocity_penalty,
-            "velocity_penalty": velocity_penalty
+            'goal_progress': goal_progress,
+            'direction_reward': direction_reward,
+            'ang_vel_penalty': ang_vel_penalty,
+            'sideways_penalty': sideways_penalty
         }
     
         return reward, reward_dict

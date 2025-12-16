@@ -22,7 +22,7 @@ if __name__ == "__main__":
     seed = args.seed
     logger_path = f"{args.logdir}/{task}/{exp}_{seed}/"
 
-    with open(f"./configs/{task}.yaml", "r") as f:
+    with open(f"./configs/{task}.yaml", "r", encoding='utf-8') as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
 
     module_map = {
@@ -34,10 +34,10 @@ if __name__ == "__main__":
 
     env_path = cfg['env_path']
 
-    # module = module_map[exp](env_name, env_path, logger_path, cfg, seed)
-    # module.train()
+    module = module_map[exp](env_name, env_path, logger_path, cfg, seed)
+    module.train()
 
     # w/o llm curricullm
-    logger_path = f"{args.logdir}/qwen_{task}/{task}/{exp}_{seed}/" 
-    module = module_map[exp](env_name, env_path, logger_path, cfg, seed)
-    module.train_with_best_rewards()
+    # logger_path = f"{args.logdir}/qwen_{task}/{task}/{exp}_{seed}/" 
+    # module = module_map[exp](env_name, env_path, logger_path, cfg, seed)
+    # module.train_with_best_rewards()
